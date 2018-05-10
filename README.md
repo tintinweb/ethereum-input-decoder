@@ -2,9 +2,9 @@
 Decode transaction inputs and constructor arguments based on the ethereum contract ABI
 
 * python3
-* suggested as a PR to (eth-abi)[https://github.com/ethereum/eth-abi/pull/69]
+* suggested as a PR to [eth-abi #69](https://github.com/ethereum/eth-abi/pull/69)
 * the heavy lifting is done by `eth-abi`
-* utilized in (pyetherchain)[https://github.com/tintinweb/pyetherchain] to decode and dump smart contract code with inputs
+* utilized in [pyetherchain](https://github.com/tintinweb/pyetherchain) to decode and dump smart contract code with inputs
 
 Decode transaction inputs and constructor arguments to contract at [0xab7c74abc0c4d48d1bdad5dcb26153fc8780f83e](https://etherscan.io/address/0xab7c74abc0c4d48d1bdad5dcb26153fc8780f83e#code) to a more human friendly notation.
 
