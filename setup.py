@@ -10,7 +10,7 @@ def read(fname):
 setup(
     name="ethereum_input_decoder",
     version="0.1",
-    packages=["pyetherchain"],
+    packages=["ethereum_input_decoder"],
     author="tintinweb",
     author_email="tintinweb@oststrom.com",
     description=(
