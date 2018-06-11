@@ -3,6 +3,70 @@
 Utility functions for decoding inputs/arguments based on contract json abi definitions
 """
 from eth_abi.abi import decode_abi
+import eth_abi.exceptions
+import binascii
+import requests
+
+
+class Utils:
+    
+    @staticmethod
+    def str_to_bytes(s):
+        """
+        Convert 0xHexString to bytes
+        :param s: 0x hexstring
+        :return:  byte sequence
+        """
+        return bytes.fromhex(s.replace("0x", ""))
+
+    @staticmethod
+    def bytes_to_str(s):
+        return "0x%s" % binascii.hexlify(s).decode("utf-8")
+
+
+class FourByteDirectory(object):
+
+    @staticmethod
+    def parse_text_signature(text_signature):
+        # no need for a fully blown parser here for now for the sake of minimal dependencies
+        name, rest = text_signature.split("(", 1)
+        args, rest = rest.strip().rsplit(")", 1)
+        args = args.strip()
+        return {'name': name.strip(),
+                'type': 'function',
+                'inputs': [{'name': 'arg%d' % i, 'type': a.strip()} for i, a in enumerate(args.split(",")) if args],
+                'outputs': []}
+
+    @staticmethod
+    def lookup_signatures(sighash):
+        resp = requests.get("https://www.4byte.directory/api/v1/signatures/?hex_signature=%s" % sighash).json()
+        for sig in resp["results"]:
+            yield sig["text_signature"]
+
+    @staticmethod
+    def get_pseudo_abi_for_sighash(sighash):
+        for text_signature in FourByteDirectory.lookup_signatures(sighash):
+            pseudo_abi = FourByteDirectory.parse_text_signature(text_signature)
+            pseudo_abi['signature'] = sighash
+            yield pseudo_abi
+
+    @staticmethod
+    def get_pseudo_abi_for_input(s):
+        """
+        Lookup sighash from 4bytes.directory, create a pseudo api and try to decode it with the parsed abi.
+        May return multiple results as sighashes may collide.
+        :param s: bytes input
+        :return: pseudo abi for method
+        """
+        sighash = Utils.bytes_to_str(s[:4])
+        for pseudo_abi in FourByteDirectory.get_pseudo_abi_for_sighash(sighash):
+            types = [ti["type"] for ti in pseudo_abi['inputs']]
+            try:
+                # test decoding
+                _ = decode_abi(types, s[4:])
+                yield pseudo_abi
+            except eth_abi.exceptions.DecodingError as e:
+                continue
 
 
 class ContractAbi(object):
@@ -14,14 +78,9 @@ class ContractAbi(object):
         self.signatures = {}
         self._prepare_abi(jsonabi)
 
-    @staticmethod
-    def str_to_bytes(s):
-        """
-        Convert 0xHexString to bytes
-        :param s: 0x hexstring
-        :return:  byte sequence
-        """
-        return bytes.fromhex(s.replace("0x", ""))
+    def _add_method_abi(self, jsonmethodabi):
+        self.abi.append(jsonmethodabi)  # add the json-method-abi to the internal json repr
+        self._prepare_abi(self.abi)  # re-init internal structures
 
     def _prepare_abi(self, jsonabi):
         """
@@ -30,6 +89,7 @@ class ContractAbi(object):
         :param jsonabi: contracts abi in json format
         :return:
         """
+        self.signatures = {}
         for element_description in jsonabi:
             abi_e = AbiMethod(element_description)
             if abi_e["type"] == "constructor":
@@ -38,7 +98,7 @@ class ContractAbi(object):
                 abi_e.setdefault("inputs", [])
                 self.signatures[b"__fallback__"] = abi_e
             elif abi_e["type"] == "function":
-                self.signatures[ContractAbi.str_to_bytes(abi_e["signature"])] = abi_e
+                self.signatures[Utils.str_to_bytes(abi_e["signature"])] = abi_e
             elif abi_e["type"] == "event":
                 self.signatures[b"__event__"] = abi_e
             else:
@@ -129,6 +189,26 @@ class AbiMethod(dict):
 
     def __str__(self):
         return self.describe()
+
+    @staticmethod
+    def from_input_lookup(s):
+        """
+        Return a new AbiMethod object from an input stream
+        :param s: binary input
+        :return: new AbiMethod object matching the provided input stream
+        """
+        for pseudo_abi in FourByteDirectory.get_pseudo_abi_for_input(s):
+            method = AbiMethod(pseudo_abi)
+            types_def = pseudo_abi["inputs"]
+            types = [t["type"] for t in types_def]
+            names = [t["name"] for t in types_def]
+
+            values = decode_abi(types, s)
+
+            # (type, name, data)
+            method.inputs = [{"type": t, "name": n, "data": v} for t, n, v in list(
+                zip(types, names, values))]
+            return method
 
     def describe(self):
         """

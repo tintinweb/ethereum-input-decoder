@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 
-from ethereum_input_decoder import ContractAbi
+from ethereum_input_decoder import ContractAbi,AbiMethod, Utils
 import argparse
 import json
 import sys, os
@@ -13,7 +13,8 @@ def main():
     inputs.add_argument('-c', '--constructor-input', help='Decode constructor argument to contract (hexstr)')
 
     definition = parser.add_argument_group('abi definition')
-    definition.add_argument('-a', '--abi', required=True,
+    # if abi is not set we try to lookup the sighash from 4bytes.directory
+    definition.add_argument('-a', '--abi',
                             help='ABI definition in json. Expected input: String or path to json file')
 
     args = parser.parse_args()
@@ -23,26 +24,37 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    if os.path.isfile(args.abi):
-        with open(args.abi, 'r') as f:
-            jsonabi = json.load(f)
+    if args.abi:
+        # abi provided - use abi to decode.
+
+        if os.path.isfile(args.abi):
+            with open(args.abi, 'r') as f:
+                jsonabi = json.load(f)
+        else:
+            jsonabi = json.loads(args.abi)
+
+        c = ContractAbi(jsonabi)
+
+        if args.constructor_input:
+            description = c.describe_constructor(Utils.str_to_bytes(args.constructor_input))
+            print("\n==[Constructor]==")
+            print("  Raw:         %r" % args.constructor_input)
+            print("  Description: %s" % description)
+
+        for txinput in args.tx_input:
+            description = c.describe_input(Utils.str_to_bytes(txinput))
+            print("\n==[Input]==")
+            print("  Raw:         %r" % txinput)
+            print("  Description: %s" % description)
+
     else:
-        jsonabi = json.loads(args.abi)
-
-    c = ContractAbi(jsonabi)
-
-    if args.constructor_input:
-        description = c.describe_constructor(ContractAbi.str_to_bytes(args.constructor_input))
-        print("\n==[Constructor]==")
-        print("  Raw:         %r" % args.constructor_input)
-        print("  Description: %s" % description)
-
-    for txinput in args.tx_input:
-        description = c.describe_input(ContractAbi.str_to_bytes(txinput))
-        print("\n==[Input]==")
-        print("  Raw:         %r" % txinput)
-        print("  Description: %s" % description)
-
+        # abi not set, try to lookup sighash
+        print("\n**online lookup**\n")
+        for txinput in args.tx_input:
+            description = AbiMethod.from_input_lookup(Utils.str_to_bytes(txinput))
+            print("\n==[Input]==")
+            print("  Raw:         %r" % txinput)
+            print("  Description: %s" % description)
 
 
 if __name__ == '__main__':
