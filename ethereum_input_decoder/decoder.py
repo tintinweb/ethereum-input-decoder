@@ -203,7 +203,7 @@ class AbiMethod(dict):
             types = [t["type"] for t in types_def]
             names = [t["name"] for t in types_def]
 
-            values = decode_abi(types, s)
+            values = decode_abi(types, s[4:])
 
             # (type, name, data)
             method.inputs = [{"type": t, "name": n, "data": v} for t, n, v in list(
