@@ -1,9 +1,11 @@
 # -*- coding: UTF-8 -*-
 
-from ethereum_input_decoder import ContractAbi,AbiMethod, Utils
+import sys
+import os
 import argparse
 import json
-import sys, os
+from ethereum_input_decoder import ContractAbi,AbiMethod, Utils
+
 
 def main():
     parser = argparse.ArgumentParser(description='Ethereum Input decoder')

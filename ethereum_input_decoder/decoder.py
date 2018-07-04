@@ -8,6 +8,18 @@ import binascii
 import requests
 
 
+class InputDecoderException(Exception):
+    pass
+
+
+class FourByteDirectoryException(InputDecoderException):
+    pass
+
+
+class FourByteDirectoryOnlineLookupError(FourByteDirectoryException):
+    pass
+
+
 class Utils:
     
     @staticmethod
@@ -38,20 +50,24 @@ class FourByteDirectory(object):
                 'outputs': []}
 
     @staticmethod
-    def lookup_signatures(sighash):
-        resp = requests.get("https://www.4byte.directory/api/v1/signatures/?hex_signature=%s" % sighash).json()
-        for sig in resp["results"]:
-            yield sig["text_signature"]
+    def lookup_signatures(sighash, timeout=None, proxies=None):
+        try:
+            resp = requests.get("https://www.4byte.directory/api/v1/signatures/?hex_signature=%s" % sighash,
+                                timeout=timeout, proxies=proxies).json()
+            for sig in resp["results"]:
+                yield sig["text_signature"]
+        except (requests.exceptions.RequestException) as re:
+            raise FourByteDirectoryOnlineLookupError(re)
 
     @staticmethod
-    def get_pseudo_abi_for_sighash(sighash):
-        for text_signature in FourByteDirectory.lookup_signatures(sighash):
+    def get_pseudo_abi_for_sighash(sighash, timeout=None, proxies=None):
+        for text_signature in FourByteDirectory.lookup_signatures(sighash, timeout=timeout, proxies=proxies):
             pseudo_abi = FourByteDirectory.parse_text_signature(text_signature)
             pseudo_abi['signature'] = sighash
             yield pseudo_abi
 
     @staticmethod
-    def get_pseudo_abi_for_input(s):
+    def get_pseudo_abi_for_input(s, timeout=None, proxies=None):
         """
         Lookup sighash from 4bytes.directory, create a pseudo api and try to decode it with the parsed abi.
         May return multiple results as sighashes may collide.
@@ -59,7 +75,7 @@ class FourByteDirectory(object):
         :return: pseudo abi for method
         """
         sighash = Utils.bytes_to_str(s[:4])
-        for pseudo_abi in FourByteDirectory.get_pseudo_abi_for_sighash(sighash):
+        for pseudo_abi in FourByteDirectory.get_pseudo_abi_for_sighash(sighash, timeout=timeout, proxies=proxies):
             types = [ti["type"] for ti in pseudo_abi['inputs']]
             try:
                 # test decoding
@@ -98,7 +114,10 @@ class ContractAbi(object):
                 abi_e.setdefault("inputs", [])
                 self.signatures[b"__fallback__"] = abi_e
             elif abi_e["type"] == "function":
-                self.signatures[Utils.str_to_bytes(abi_e["signature"])] = abi_e
+                # function and signature present
+                # todo: we could generate the sighash ourselves? requires keccak256
+                if abi_e.get("signature"):
+                    self.signatures[Utils.str_to_bytes(abi_e["signature"])] = abi_e
             elif abi_e["type"] == "event":
                 self.signatures[b"__event__"] = abi_e
             else:
